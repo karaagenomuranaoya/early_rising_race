@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
@@ -19,18 +19,21 @@ export default function RoomPage() {
   const [myId, setMyId] = useState<string | null>(null);
   const [myData, setMyData] = useState<Participant | null>(null);
   const [winnerData, setWinnerData] = useState<Participant | null>(null);
-  const [leaderboard, setLeaderboard] = useState<Participant[]>([]); // ★ランキング用
+  const [leaderboard, setLeaderboard] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(false);
   const [participantCount, setParticipantCount] = useState(0);
   
   const [commentText, setCommentText] = useState('');
   const [isCommentSent, setIsCommentSent] = useState(false);
-  const [showResult, setShowResult] = useState(false); // ★リザルト表示フラグ
+  const [showResult, setShowResult] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // ★長押し用のState
+  const [isPressing, setIsPressing] = useState(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // --- データ取得 ---
   const fetchRoomData = useCallback(async () => {
-    // A. 自分の情報
     const storedId = localStorage.getItem(`race_${roomId}_my_id`);
     setMyId(storedId);
 
@@ -44,7 +47,6 @@ export default function RoomPage() {
       if (me?.comment) setIsCommentSent(true);
     }
 
-    // B. 1位の情報
     const { data: winner } = await supabase
       .from('participants')
       .select('*')
@@ -53,19 +55,17 @@ export default function RoomPage() {
       .single();
     setWinnerData(winner);
 
-    // C. 参加人数
     const { count } = await supabase
       .from('participants')
       .select('*', { count: 'exact', head: true })
       .eq('room_id', roomId);
     setParticipantCount(count || 0);
 
-    // D. ★ランキング一覧（全員分）
     const { data: allMembers } = await supabase
       .from('participants')
       .select('*')
       .eq('room_id', roomId)
-      .not('rank', 'is', null) // 順位がついている人のみ
+      .not('rank', 'is', null)
       .order('rank', { ascending: true });
     
     if (allMembers) setLeaderboard(allMembers);
@@ -74,14 +74,12 @@ export default function RoomPage() {
 
   useEffect(() => {
     fetchRoomData();
-    
     const channel = supabase
       .channel('room-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, () => {
         fetchRoomData();
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [fetchRoomData]);
 
@@ -93,7 +91,6 @@ export default function RoomPage() {
   };
 
   const copyResultText = () => {
-    // SNSシェア用のテキスト生成
     let text = `🏆 早起きレース結果 🏆\n\n`;
     leaderboard.forEach((p) => {
       const time = new Date(p.woke_up_at!).toLocaleTimeString('ja-JP');
@@ -101,9 +98,8 @@ export default function RoomPage() {
       text += `「${p.comment || '...'}」\n\n`;
     });
     text += `#EarlyRisingRace\n${window.location.href}`;
-    
     navigator.clipboard.writeText(text);
-    alert('結果をコピーしました！SNSに貼り付けてください。');
+    alert('結果をコピーしました！');
   };
 
   const joinRace = async () => {
@@ -145,54 +141,29 @@ export default function RoomPage() {
     setLoading(false);
   };
 
+  // ★長押し制御ロジック
+  const startPress = () => {
+    if (loading) return;
+    setIsPressing(true);
+    // 2秒(2000ms)押し続けたら発火
+    timerRef.current = setTimeout(() => {
+      wakeUp();
+    }, 2000);
+  };
+
+  const cancelPress = () => {
+    setIsPressing(false);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
   // ------------------------------------------
   // UI 分岐
   // ------------------------------------------
 
-  // ★ 4. リザルト画面 (showResult = true)
-  if (showResult) {
-    return (
-      <main className="flex min-h-screen flex-col items-center bg-black text-white p-4 font-mono">
-        <h2 className="text-3xl font-black text-green-400 mb-8 mt-4 tracking-widest">RANKING</h2>
-        
-        <div className="w-full max-w-md space-y-4 mb-8">
-          {leaderboard.map((user) => {
-            const isMe = user.id === myId;
-            const isFirst = user.rank === 1;
-            const time = new Date(user.woke_up_at!).toLocaleTimeString('ja-JP');
-
-            return (
-              <div 
-                key={user.id} 
-                className={`p-4 border-l-8 ${isFirst ? 'bg-yellow-900 border-yellow-500' : 'bg-gray-900 border-gray-600'} ${isMe ? 'ring-2 ring-white' : ''}`}
-              >
-                <div className="flex justify-between items-baseline mb-2">
-                  <span className={`text-2xl font-black ${isFirst ? 'text-yellow-400' : 'text-gray-400'}`}>
-                    #{user.rank}
-                  </span>
-                  <span className="text-sm text-gray-400">{time}</span>
-                </div>
-                <div className="font-bold text-xl mb-1">{user.nickname}</div>
-                <div className={`text-sm italic ${isFirst ? 'text-yellow-200' : 'text-gray-300'}`}>
-                  "{user.comment || '...'}"
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <button 
-          onClick={copyResultText}
-          className="w-full max-w-md bg-white text-black font-bold py-4 text-xl mb-12 hover:bg-gray-200 active:scale-95 transition-transform"
-        >
-          COPY RESULT (SNS)
-        </button>
-      </main>
-    );
-  }
-
-
-  // 1. 未参加 -> エントリー
+  // 1. 未参加
   if (!myId) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-black text-green-400 p-6 font-mono">
@@ -214,10 +185,10 @@ export default function RoomPage() {
     );
   }
 
-  // 2. 参加済み & 寝てる -> 起床ボタン
+  // 2. 参加済み & 寝てる -> ★長押しボタン画面
   if (myData && !myData.woke_up_at) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-black text-white p-4 font-mono relative">
+      <main className="flex min-h-screen flex-col items-center justify-center bg-black text-white p-4 font-mono relative select-none">
         <div className="absolute top-4 right-4">
           <button 
             onClick={copyInviteLink} 
@@ -234,17 +205,37 @@ export default function RoomPage() {
           </div>
         )}
         
-        <button
-          onClick={wakeUp}
-          disabled={loading}
-          className="w-64 h-64 rounded-full bg-red-600 text-white text-3xl font-black shadow-[0_0_50px_rgba(220,38,38,0.6)] active:scale-95 transition-transform border-4 border-red-400 animate-pulse"
+        {/* 長押しボタン */}
+        <div 
+          className="relative w-64 h-64 rounded-full overflow-hidden shadow-[0_0_50px_rgba(220,38,38,0.6)] border-4 border-red-400 cursor-pointer"
+          onMouseDown={startPress}
+          onMouseUp={cancelPress}
+          onMouseLeave={cancelPress}
+          onTouchStart={startPress}
+          onTouchEnd={cancelPress}
         >
-          I'M<br />AWAKE!
-        </button>
+          {/* 背景の赤色（常時表示） */}
+          <div className="absolute inset-0 bg-red-900"></div>
+
+          {/* ゲージ（長押しで下から増える） */}
+          <div 
+            className="absolute bottom-0 left-0 w-full bg-red-600 transition-all duration-[2000ms] ease-linear"
+            style={{ height: isPressing ? '100%' : '0%' }}
+          ></div>
+
+          {/* テキストレイヤー */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className={`text-3xl font-black transition-transform duration-100 ${isPressing ? 'scale-110' : 'scale-100'}`}>
+              HOLD<br/>TO WAKE
+            </span>
+          </div>
+        </div>
         
         <div className="mt-12 text-center">
           <p className="text-green-400 font-bold text-lg">{myData.nickname}</p>
-          <p className="text-gray-500 text-sm">ENTRY COMPLETED</p>
+          <p className="text-gray-500 text-sm">
+            {isPressing ? "KEEP HOLDING..." : "LONG PRESS BUTTON"}
+          </p>
         </div>
       </main>
     );
@@ -283,7 +274,6 @@ export default function RoomPage() {
           </div>
         ) : (
           <div className="mt-8 text-center w-full max-w-xs">
-            {/* ★ここを変更：結果を見るボタンを追加 */}
             <p className="text-2xl font-black mb-6 animate-pulse">WAITING FOR OTHERS...</p>
             <button 
               onClick={() => setShowResult(true)}
@@ -293,6 +283,48 @@ export default function RoomPage() {
             </button>
           </div>
         )}
+      </main>
+    );
+  }
+
+  // 4. リザルト画面
+  if (showResult) {
+    return (
+      <main className="flex min-h-screen flex-col items-center bg-black text-white p-4 font-mono">
+        <h2 className="text-3xl font-black text-green-400 mb-8 mt-4 tracking-widest">RANKING</h2>
+        
+        <div className="w-full max-w-md space-y-4 mb-8">
+          {leaderboard.map((user) => {
+            const isMe = user.id === myId;
+            const isFirst = user.rank === 1;
+            const time = new Date(user.woke_up_at!).toLocaleTimeString('ja-JP');
+
+            return (
+              <div 
+                key={user.id} 
+                className={`p-4 border-l-8 ${isFirst ? 'bg-yellow-900 border-yellow-500' : 'bg-gray-900 border-gray-600'} ${isMe ? 'ring-2 ring-white' : ''}`}
+              >
+                <div className="flex justify-between items-baseline mb-2">
+                  <span className={`text-2xl font-black ${isFirst ? 'text-yellow-400' : 'text-gray-400'}`}>
+                    #{user.rank}
+                  </span>
+                  <span className="text-sm text-gray-400">{time}</span>
+                </div>
+                <div className="font-bold text-xl mb-1">{user.nickname}</div>
+                <div className={`text-sm italic ${isFirst ? 'text-yellow-200' : 'text-gray-300'}`}>
+                  "{user.comment || '...'}"
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <button 
+          onClick={copyResultText}
+          className="w-full max-w-md bg-white text-black font-bold py-4 text-xl mb-12 hover:bg-gray-200 active:scale-95 transition-transform"
+        >
+          COPY RESULT (SNS)
+        </button>
       </main>
     );
   }
