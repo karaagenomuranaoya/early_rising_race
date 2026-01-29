@@ -226,7 +226,7 @@ export default function RoomPage() {
           {/* テキストレイヤー */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
             <span className={`text-3xl font-black transition-transform duration-100 ${isPressing ? 'scale-110' : 'scale-100'}`}>
-              HOLD<br/>TO WAKE
+              長押しで起きる
             </span>
           </div>
         </div>
