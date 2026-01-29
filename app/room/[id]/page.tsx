@@ -47,7 +47,7 @@ export default function RoomPage() {
       if (me?.comment) setIsCommentSent(true);
     }
 
-    // 2. 1位のデータ（煽りコメント表示用）
+    // 2. 1位のデータ
     const { data: winner } = await supabase
       .from('participants')
       .select('*')
@@ -128,7 +128,7 @@ export default function RoomPage() {
       .update({ comment: commentText })
       .eq('id', myId);
     if (!error) setIsCommentSent(true);
-    fetchRoomData(); // 即座に反映
+    fetchRoomData();
     setLoading(false);
   };
 
@@ -153,117 +153,150 @@ export default function RoomPage() {
   // UI レンダリング
   // ------------------------------------------
 
-  // 1. 未参加
+  // 1. 未参加 (白ベースのシンプルなフォーム)
   if (!myId) {
     return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-black text-green-400 p-6 font-mono">
-        <h2 className="text-2xl font-bold mb-4">WHO ARE YOU?</h2>
-        <div className="mb-8 text-gray-500 border border-gray-800 px-4 py-2 rounded-full text-sm">
-          Entry: <span className="text-white font-bold text-lg">{participantCount}</span> Racers
-        </div>
-        <input
-          type="text"
-          placeholder="NICKNAME"
-          value={nickname}
-          onChange={(e) => setNickname(e.target.value)}
-          className="w-full max-w-xs bg-gray-900 border-2 border-green-500 text-white text-xl p-4 mb-6 text-center outline-none"
-        />
-        <button onClick={joinRace} disabled={loading} className="w-full max-w-xs bg-white text-black text-xl font-bold py-4 hover:bg-gray-200">
-          ENTER RACE
-        </button>
-      </main>
-    );
-  }
+      <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 text-gray-900 p-6 font-mono">
+        <div className="w-full max-w-sm bg-white p-8 rounded-2xl shadow-xl border border-gray-100">
+          <h2 className="text-2xl font-black mb-6 text-center text-blue-600">ニックネーム入力</h2>
+          
+          <div className="mb-8 text-center">
+             <span className="bg-blue-50 text-blue-700 px-4 py-1 rounded-full text-sm font-bold border border-blue-100">
+               {participantCount} 人が参加中
+             </span>
+          </div>
 
-  // 2. 参加済み & 寝てる -> ★長押しボタン (情報は一切遮断)
-  if (myData && !myData.woke_up_at) {
-    return (
-      <main className="flex min-h-screen flex-col items-center justify-center bg-black text-white p-4 font-mono relative select-none">
-        <div className="absolute top-4 right-4">
+          <input
+            type="text"
+            placeholder="NICKNAME"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            className="w-full bg-gray-50 border-2 border-gray-200 focus:border-blue-500 focus:bg-white text-gray-900 text-xl p-4 mb-4 text-center rounded-xl outline-none transition-colors font-bold"
+          />
           <button 
-            onClick={copyInviteLink} 
-            className="bg-gray-800 text-xs px-3 py-2 rounded border border-gray-600 active:bg-gray-700"
+            onClick={joinRace} 
+            disabled={loading} 
+            className="w-full bg-blue-600 text-white text-lg font-bold py-4 rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200"
           >
-            {copied ? 'COPIED!' : '🔗 INVITE URL'}
+            バトルに参加
           </button>
         </div>
+      </main>
+    );
+  }
 
-        {/* 以前あった「1位が起きたよ通知」は削除済み */}
-        
-        <div 
-          className="relative w-64 h-64 rounded-full overflow-hidden shadow-[0_0_50px_rgba(220,38,38,0.6)] border-4 border-red-400 cursor-pointer"
-          onMouseDown={startPress}
-          onMouseUp={cancelPress}
-          onMouseLeave={cancelPress}
-          onTouchStart={startPress}
-          onTouchEnd={cancelPress}
-        >
-          <div className="absolute inset-0 bg-red-900"></div>
-          <div 
-            className="absolute bottom-0 left-0 w-full bg-red-600 transition-all duration-[2000ms] ease-linear"
-            style={{ height: isPressing ? '100%' : '0%' }}
-          ></div>
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className={`text-3xl font-black transition-transform duration-100 ${isPressing ? 'scale-110' : 'scale-100'}`}>
-              長押しで起きる
-            </span>
-          </div>
+  // 2. 参加済み & 寝てる -> ★長押しボタン (白背景にオレンジのボタン)
+  if (myData && !myData.woke_up_at) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-white text-gray-900 p-4 font-mono relative select-none overflow-hidden">
+        {/* 背景装飾 */}
+        <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] opacity-50"></div>
+
+        <div className="absolute top-4 right-4 z-10">
+          <button 
+            onClick={copyInviteLink} 
+            className="bg-white text-xs px-4 py-2 rounded-full border border-gray-200 shadow-sm font-bold text-gray-500 active:scale-95 transition-transform"
+          >
+            {copied ? '✅ COPIED!' : '🔗 INVITE URL'}
+          </button>
         </div>
         
-        <div className="mt-12 text-center">
-          <p className="text-green-400 font-bold text-lg">{myData.nickname}</p>
-          <p className="text-gray-500 text-sm">
-            {isPressing ? "KEEP HOLDING..." : "LONG PRESS BUTTON"}
-          </p>
+        <div className="relative z-10">
+          <div 
+            className="relative w-72 h-72 rounded-full flex items-center justify-center cursor-pointer active:scale-95 transition-transform duration-100 shadow-[0_10px_40px_-10px_rgba(249,115,22,0.5)] bg-white"
+            onMouseDown={startPress}
+            onMouseUp={cancelPress}
+            onMouseLeave={cancelPress}
+            onTouchStart={startPress}
+            onTouchEnd={cancelPress}
+          >
+            {/* バックグラウンドリング */}
+            <div className="absolute inset-0 rounded-full border-8 border-gray-100"></div>
+
+            {/* 進行リング (Clip-pathなどで簡易表現、あるいは背景色変化) */}
+            <div 
+              className="absolute inset-0 rounded-full bg-orange-500 transition-all duration-[2000ms] ease-linear opacity-20"
+              style={{ transform: `scale(${isPressing ? 1 : 0})`, opacity: isPressing ? 1 : 0 }}
+            ></div>
+
+            <div className="relative flex flex-col items-center">
+              <span className={`text-3xl font-black text-orange-500 transition-all duration-200 ${isPressing ? 'scale-110' : 'scale-100'}`}>
+                {isPressing ? "WAKING UP..." : "HOLD TO WAKE"}
+              </span>
+              <span className="text-gray-400 text-sm font-bold mt-2">長押しで起床</span>
+            </div>
+          </div>
+          
+          <div className="mt-16 text-center">
+            <p className="text-gray-900 font-bold text-2xl mb-1">{myData.nickname}</p>
+            <div className="inline-block bg-gray-100 px-3 py-1 rounded-full text-xs font-bold text-gray-500">
+              ZZZ... SLEEPING
+            </div>
+          </div>
         </div>
       </main>
     );
   }
 
-  // 3. 起床済み -> 結果入力画面 or 暫定ランキング
+  // 3. 起床済み -> 結果入力 or ランキング
   if (myData && myData.woke_up_at) {
     const isWinner = myData.rank === 1;
 
-    // A. コメント未送信 -> 入力フォーム表示
+    // A. コメント未送信 -> 入力フォーム
     if (!isCommentSent) {
       return (
-        <main className={`flex min-h-screen flex-col items-center justify-center p-6 font-mono ${isWinner ? 'bg-yellow-500 text-black' : 'bg-gray-900 text-white'}`}>
-          <h1 className="text-6xl font-black mb-2">{myData.rank}<span className="text-2xl">位</span></h1>
-          <p className="font-bold mb-8">{myData.nickname}</p>
-          
-          {!isWinner && winnerData?.comment && (
-            <div className="w-full max-w-sm bg-black border-2 border-yellow-500 p-4 mb-8 text-yellow-500 rounded-lg">
-              <p className="text-xs text-gray-400 mb-1">MESSAGE FROM KING:</p>
-              <p className="text-lg font-bold">"{winnerData.comment}"</p>
+        <main className={`flex min-h-screen flex-col items-center justify-center p-6 font-mono ${isWinner ? 'bg-amber-50' : 'bg-gray-50'}`}>
+          <div className="w-full max-w-md">
+            <div className="text-center mb-10">
+                <h1 className={`text-8xl font-black mb-2 ${isWinner ? 'text-amber-500' : 'text-gray-300'}`}>
+                    {myData.rank}<span className="text-3xl text-gray-400">位</span>
+                </h1>
+                <p className="font-bold text-xl text-gray-700">{myData.nickname}</p>
             </div>
-          )}
+            
+            {!isWinner && winnerData?.comment && (
+              <div className="relative bg-white border border-amber-200 p-6 mb-10 rounded-2xl shadow-sm">
+                <div className="absolute -top-3 left-6 bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded">
+                    👑 WINNER'S MESSAGE
+                </div>
+                <p className="text-lg font-bold text-gray-800 italic">"{winnerData.comment}"</p>
+              </div>
+            )}
 
-          <div className="w-full max-w-sm">
-            <p className="mb-2 font-bold text-sm">{isWinner ? '敗者へ一言' : '言い訳'}</p>
-            <textarea
-              rows={3}
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              className={`w-full p-3 text-black font-bold outline-none border-4 ${isWinner ? 'bg-white border-black' : 'bg-gray-200 border-gray-700'}`}
-            />
-            <button
-              onClick={sendComment}
-              className={`w-full mt-4 py-4 font-black text-xl border-4 ${isWinner ? 'bg-black text-white' : 'bg-red-600 text-white'}`}
-            >
-              SEND & SEE RANKING
-            </button>
+            <div className="bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
+              <p className="mb-3 font-bold text-sm text-gray-500">{isWinner ? 'ねぼすけどもに煽りの一言' : '言い訳をどうぞ'}</p>
+              <textarea
+                rows={3}
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                className="w-full p-4 bg-gray-50 text-gray-900 font-bold border-2 border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:bg-white transition-colors resize-none"
+                placeholder="..."
+              />
+              <button
+                onClick={sendComment}
+                className={`w-full mt-4 py-4 rounded-xl font-bold text-lg shadow-lg transition-all active:scale-95 ${
+                    isWinner 
+                    ? 'bg-amber-400 text-amber-950 hover:bg-amber-500 shadow-amber-200' 
+                    : 'bg-gray-800 text-white hover:bg-gray-900 shadow-gray-300'
+                }`}
+              >
+                送信
+              </button>
+            </div>
           </div>
         </main>
       );
     }
 
-    // B. コメント送信済み -> ★暫定ランキング表示 (常時閲覧可能)
+    // B. コメント送信済み -> ★暫定ランキング (見やすいリスト表示)
     return (
-      <main className="flex min-h-screen flex-col items-center bg-black text-white p-4 font-mono">
-        <h2 className="text-2xl font-black text-green-400 mb-6 mt-4 tracking-widest">LIVE RANKING</h2>
+      <main className="flex min-h-screen flex-col items-center bg-gray-50 text-gray-900 p-4 font-mono">
+        <div className="w-full max-w-lg mt-8 mb-4 flex justify-between items-center">
+            <h2 className="text-2xl font-black text-gray-800 tracking-tighter">早起きランキング</h2>
+            <div className="text-sm font-bold text-gray-400">選手：{participantCount}名</div>
+        </div>
         
-        <div className="w-full max-w-md space-y-4 mb-12">
-          {/* 参加人数分の枠をループで表示 */}
+        <div className="w-full max-w-lg space-y-3 mb-12">
           {Array.from({ length: participantCount }).map((_, i) => {
             const rank = i + 1;
             const user = leaderboard.find(u => u.rank === rank);
@@ -271,9 +304,9 @@ export default function RoomPage() {
             // まだ起きていない順位
             if (!user) {
               return (
-                <div key={rank} className="p-4 border-l-4 border-gray-800 bg-gray-900 opacity-50 flex items-center">
-                   <span className="text-xl font-black text-gray-600 mr-4">#{rank}</span>
-                   <span className="text-xl font-bold text-gray-600">？？？</span>
+                <div key={rank} className="p-4 rounded-xl border-2 border-dashed border-gray-200 bg-transparent flex items-center opacity-60">
+                   <span className="text-xl font-black text-gray-300 w-12 text-center">#{rank}</span>
+                   <span className="text-sm font-bold text-gray-300">ねぼすけ...</span>
                 </div>
               );
             }
@@ -286,17 +319,28 @@ export default function RoomPage() {
             return (
               <div 
                 key={user.id} 
-                className={`p-4 border-l-8 ${isFirst ? 'bg-yellow-900 border-yellow-500' : 'bg-gray-800 border-gray-600'} ${isMe ? 'ring-2 ring-white' : ''}`}
+                className={`
+                    relative p-5 rounded-xl shadow-sm border transition-all
+                    ${isFirst ? 'bg-amber-50 border-amber-200 shadow-amber-100 z-10 scale-105 my-6' : 'bg-white border-gray-100'}
+                    ${isMe && !isFirst ? 'ring-2 ring-blue-500 ring-offset-2' : ''}
+                `}
               >
-                <div className="flex justify-between items-baseline mb-2">
-                  <span className={`text-2xl font-black ${isFirst ? 'text-yellow-400' : 'text-gray-400'}`}>
-                    #{user.rank}
-                  </span>
-                  <span className="text-xs text-gray-400">{time}</span>
+                {isFirst && <div className="absolute -top-3 -right-2 bg-amber-400 text-white text-xs font-bold px-2 py-1 rounded shadow-sm">KING</div>}
+                
+                <div className="flex justify-between items-center mb-2">
+                  <div className="flex items-center gap-3">
+                      <span className={`text-2xl font-black italic ${isFirst ? 'text-amber-500' : 'text-gray-300'}`}>
+                        #{user.rank}
+                      </span>
+                      <span className={`font-bold ${isFirst ? 'text-gray-900 text-lg' : 'text-gray-700'}`}>
+                        {user.nickname}
+                      </span>
+                  </div>
+                  <span className="text-xs font-mono text-gray-400 bg-gray-100 px-2 py-1 rounded">{time}</span>
                 </div>
-                <div className="font-bold text-lg mb-1">{user.comment || '...'}</div>
-                <div className={`text-sm italic ${isFirst ? 'text-yellow-200' : 'text-gray-400'}`}>
-                    {user.nickname}
+                
+                <div className={`text-sm font-medium leading-relaxed pl-1 ${isFirst ? 'text-gray-800' : 'text-gray-500'}`}>
+                    "{user.comment || '...'}"
                 </div>
               </div>
             );
@@ -306,5 +350,5 @@ export default function RoomPage() {
     );
   }
 
-  return <div className="bg-black min-h-screen"></div>;
+  return <div className="bg-white min-h-screen"></div>;
 }

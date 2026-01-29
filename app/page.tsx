@@ -9,7 +9,6 @@ export default function Home() {
 
   const createRoom = async () => {
     setLoading(true);
-    // 1. 部屋を作成
     const { data, error } = await supabase
       .from('rooms')
       .insert([{ status: 'waiting' }])
@@ -22,25 +21,29 @@ export default function Home() {
       return;
     }
 
-    // 2. 作成された部屋のページへ遷移
     router.push(`/room/${data.id}`);
   };
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-black text-green-400 p-4 font-mono">
-      <h1 className="text-4xl md:text-6xl font-black mb-12 tracking-tighter animate-pulse text-center">
-        EARLY<br />RISING<br />RACE
-      </h1>
-      
-      <p className="text-gray-500 mb-8 text-sm">負けたら煽られる。敗者は言い訳する。</p>
+    <main className="flex min-h-screen flex-col items-center justify-center bg-gray-50 text-gray-900 p-6 font-mono">
+      <div className="text-center mb-16">
+        <h1 className="text-5xl md:text-7xl font-black mb-4 tracking-tighter text-blue-600 drop-shadow-sm">
+          早起きバトル
+        </h1>
+        <p className="text-gray-500 font-bold tracking-wide text-sm">早起きして友達を煽ろう</p>
+      </div>
 
       <button
         onClick={createRoom}
         disabled={loading}
-        className="w-full max-w-xs bg-green-500 text-black text-2xl font-bold py-6 px-8 rounded-none hover:bg-green-400 disabled:opacity-50 transition-all active:scale-95 shadow-[0_0_20px_rgba(74,222,128,0.5)]"
+        className="w-full max-w-xs bg-white border-2 border-blue-600 text-blue-600 text-2xl font-black py-6 px-8 rounded-xl hover:bg-blue-600 hover:text-white disabled:opacity-50 transition-all active:scale-95 shadow-lg shadow-blue-100"
       >
-        {loading ? 'CREATING...' : 'RACE START'}
+        {loading ? 'CREATING...' : 'BATTLE START'}
       </button>
+      
+      <div className="mt-12 text-xs text-gray-400">
+        GOOD MORNING, GOOD GAME.
+      </div>
     </main>
   );
 }
