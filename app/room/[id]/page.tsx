@@ -19,14 +19,18 @@ export default function RoomPage() {
   const [myId, setMyId] = useState<string | null>(null);
   const [myData, setMyData] = useState<Participant | null>(null);
   const [winnerData, setWinnerData] = useState<Participant | null>(null);
+  const [leaderboard, setLeaderboard] = useState<Participant[]>([]); // ★ランキング用
   const [loading, setLoading] = useState(false);
+  const [participantCount, setParticipantCount] = useState(0);
+  
   const [commentText, setCommentText] = useState('');
   const [isCommentSent, setIsCommentSent] = useState(false);
-  const [copied, setCopied] = useState(false); // コピー完了表示用
+  const [showResult, setShowResult] = useState(false); // ★リザルト表示フラグ
+  const [copied, setCopied] = useState(false);
 
-  // --- 初期化 & データ取得 ---
+  // --- データ取得 ---
   const fetchRoomData = useCallback(async () => {
-    // 1. 自分のデータ
+    // A. 自分の情報
     const storedId = localStorage.getItem(`race_${roomId}_my_id`);
     setMyId(storedId);
 
@@ -40,7 +44,7 @@ export default function RoomPage() {
       if (me?.comment) setIsCommentSent(true);
     }
 
-    // 2. 1位のデータ
+    // B. 1位の情報
     const { data: winner } = await supabase
       .from('participants')
       .select('*')
@@ -48,16 +52,32 @@ export default function RoomPage() {
       .eq('rank', 1)
       .single();
     setWinnerData(winner);
+
+    // C. 参加人数
+    const { count } = await supabase
+      .from('participants')
+      .select('*', { count: 'exact', head: true })
+      .eq('room_id', roomId);
+    setParticipantCount(count || 0);
+
+    // D. ★ランキング一覧（全員分）
+    const { data: allMembers } = await supabase
+      .from('participants')
+      .select('*')
+      .eq('room_id', roomId)
+      .not('rank', 'is', null) // 順位がついている人のみ
+      .order('rank', { ascending: true });
+    
+    if (allMembers) setLeaderboard(allMembers);
+
   }, [roomId]);
 
   useEffect(() => {
     fetchRoomData();
     
-    // ★リアルタイム購読（ここが動くにはSQLの設定が必要）
     const channel = supabase
       .channel('room-updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'participants' }, () => {
-        console.log('Change received!'); // デバッグ用
         fetchRoomData();
       })
       .subscribe();
@@ -65,15 +85,27 @@ export default function RoomPage() {
     return () => { supabase.removeChannel(channel); };
   }, [fetchRoomData]);
 
-  // --- 招待URLコピー機能 ---
+  // --- アクション ---
   const copyInviteLink = () => {
-    const url = window.location.href; // 現在のURL (room/[id])
-    navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(window.location.href);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // --- アクション: 参加登録 ---
+  const copyResultText = () => {
+    // SNSシェア用のテキスト生成
+    let text = `🏆 早起きレース結果 🏆\n\n`;
+    leaderboard.forEach((p) => {
+      const time = new Date(p.woke_up_at!).toLocaleTimeString('ja-JP');
+      text += `${p.rank}位: ${p.nickname} (${time})\n`;
+      text += `「${p.comment || '...'}」\n\n`;
+    });
+    text += `#EarlyRisingRace\n${window.location.href}`;
+    
+    navigator.clipboard.writeText(text);
+    alert('結果をコピーしました！SNSに貼り付けてください。');
+  };
+
   const joinRace = async () => {
     if (!nickname) return;
     setLoading(true);
@@ -87,23 +119,21 @@ export default function RoomPage() {
       localStorage.setItem(`race_${roomId}_my_id`, data.id);
       setMyId(data.id);
       setMyData(data);
+      fetchRoomData();
     }
     setLoading(false);
   };
 
-  // --- アクション: 起床 ---
   const wakeUp = async () => {
     if (!myId) return;
     setLoading(true);
-    const { error } = await supabase.rpc('mark_woke_up', {
+    await supabase.rpc('mark_woke_up', {
       p_room_id: roomId,
       p_participant_id: myId
     });
-    if (!error) fetchRoomData();
     setLoading(false);
   };
 
-  // --- アクション: コメント送信 ---
   const sendComment = async () => {
     if (!myId || !commentText) return;
     setLoading(true);
@@ -111,22 +141,65 @@ export default function RoomPage() {
       .from('participants')
       .update({ comment: commentText })
       .eq('id', myId);
-    if (!error) {
-      setIsCommentSent(true);
-      fetchRoomData();
-    }
+    if (!error) setIsCommentSent(true);
     setLoading(false);
   };
 
   // ------------------------------------------
-  // UI
+  // UI 分岐
   // ------------------------------------------
 
-  // 1. 未参加 -> エントリー画面
+  // ★ 4. リザルト画面 (showResult = true)
+  if (showResult) {
+    return (
+      <main className="flex min-h-screen flex-col items-center bg-black text-white p-4 font-mono">
+        <h2 className="text-3xl font-black text-green-400 mb-8 mt-4 tracking-widest">RANKING</h2>
+        
+        <div className="w-full max-w-md space-y-4 mb-8">
+          {leaderboard.map((user) => {
+            const isMe = user.id === myId;
+            const isFirst = user.rank === 1;
+            const time = new Date(user.woke_up_at!).toLocaleTimeString('ja-JP');
+
+            return (
+              <div 
+                key={user.id} 
+                className={`p-4 border-l-8 ${isFirst ? 'bg-yellow-900 border-yellow-500' : 'bg-gray-900 border-gray-600'} ${isMe ? 'ring-2 ring-white' : ''}`}
+              >
+                <div className="flex justify-between items-baseline mb-2">
+                  <span className={`text-2xl font-black ${isFirst ? 'text-yellow-400' : 'text-gray-400'}`}>
+                    #{user.rank}
+                  </span>
+                  <span className="text-sm text-gray-400">{time}</span>
+                </div>
+                <div className="font-bold text-xl mb-1">{user.nickname}</div>
+                <div className={`text-sm italic ${isFirst ? 'text-yellow-200' : 'text-gray-300'}`}>
+                  "{user.comment || '...'}"
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <button 
+          onClick={copyResultText}
+          className="w-full max-w-md bg-white text-black font-bold py-4 text-xl mb-12 hover:bg-gray-200 active:scale-95 transition-transform"
+        >
+          COPY RESULT (SNS)
+        </button>
+      </main>
+    );
+  }
+
+
+  // 1. 未参加 -> エントリー
   if (!myId) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-black text-green-400 p-6 font-mono">
-        <h2 className="text-2xl font-bold mb-8">WHO ARE YOU?</h2>
+        <h2 className="text-2xl font-bold mb-4">WHO ARE YOU?</h2>
+        <div className="mb-8 text-gray-500 border border-gray-800 px-4 py-2 rounded-full text-sm">
+          Entry: <span className="text-white font-bold text-lg">{participantCount}</span> Racers
+        </div>
         <input
           type="text"
           placeholder="NICKNAME"
@@ -141,12 +214,10 @@ export default function RoomPage() {
     );
   }
 
-  // 2. 参加済み & 寝てる -> 起床ボタン待機画面
+  // 2. 参加済み & 寝てる -> 起床ボタン
   if (myData && !myData.woke_up_at) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-black text-white p-4 font-mono relative">
-        
-        {/* ★招待ボタンを追加 */}
         <div className="absolute top-4 right-4">
           <button 
             onClick={copyInviteLink} 
@@ -156,7 +227,6 @@ export default function RoomPage() {
           </button>
         </div>
 
-        {/* 1位がいたら表示 */}
         {winnerData && (
           <div className="absolute top-20 w-full text-center">
              <p className="text-red-500 font-bold animate-pulse">SOMEONE IS AWAKE...</p>
@@ -172,30 +242,29 @@ export default function RoomPage() {
           I'M<br />AWAKE!
         </button>
         
-        <p className="mt-12 text-gray-500 text-center text-sm">
-          この画面のまま寝ろ。<br/>
-          起きた瞬間に押せ。
-        </p>
+        <div className="mt-12 text-center">
+          <p className="text-green-400 font-bold text-lg">{myData.nickname}</p>
+          <p className="text-gray-500 text-sm">ENTRY COMPLETED</p>
+        </div>
       </main>
     );
   }
 
-  // 3. 起床済み -> 結果画面
+  // 3. 起床済み -> 結果入力画面
   if (myData && myData.woke_up_at) {
     const isWinner = myData.rank === 1;
     return (
       <main className={`flex min-h-screen flex-col items-center justify-center p-6 font-mono ${isWinner ? 'bg-yellow-500 text-black' : 'bg-gray-900 text-white'}`}>
         <h1 className="text-6xl font-black mb-2">{myData.rank}<span className="text-2xl">位</span></h1>
+        <p className="font-bold mb-8">{myData.nickname}</p>
         
-        {/* 敗者には勝者のコメントを表示 */}
         {!isWinner && winnerData?.comment && (
           <div className="w-full max-w-sm bg-black border-2 border-yellow-500 p-4 mb-8 text-yellow-500 rounded-lg">
             <p className="text-xs text-gray-400 mb-1">MESSAGE FROM KING:</p>
-            <p className="text-lg font-bold">{winnerData.comment}</p>
+            <p className="text-lg font-bold">"{winnerData.comment}"</p>
           </div>
         )}
 
-        {/* コメント入力 */}
         {!isCommentSent ? (
           <div className="w-full max-w-sm">
             <p className="mb-2 font-bold text-sm">{isWinner ? '敗者へ一言' : '言い訳'}</p>
@@ -213,8 +282,15 @@ export default function RoomPage() {
             </button>
           </div>
         ) : (
-          <div className="mt-8 text-center animate-pulse">
-            <p className="text-2xl font-black">WAIT FOR RESULTS</p>
+          <div className="mt-8 text-center w-full max-w-xs">
+            {/* ★ここを変更：結果を見るボタンを追加 */}
+            <p className="text-2xl font-black mb-6 animate-pulse">WAITING FOR OTHERS...</p>
+            <button 
+              onClick={() => setShowResult(true)}
+              className={`w-full py-4 font-bold border-4 ${isWinner ? 'border-black hover:bg-white/20' : 'border-white hover:bg-white/10'}`}
+            >
+              SHOW LEADERBOARD
+            </button>
           </div>
         )}
       </main>
